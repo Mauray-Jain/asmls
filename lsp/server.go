@@ -19,21 +19,24 @@ type NotifHandler func(params *json.RawMessage) (err error)
 type Server struct {
 	Reader    io.Reader
 	Writer    io.Writer
-	logger    log.Logger
+	logger    *log.Logger
 	Documents map[string]string
 	Methods   map[string]MethodHandler
 	Notifs    map[string]NotifHandler
 }
 
-func NewServer(r io.Reader, w io.Writer) Server {
+func NewServer(r io.Reader, w io.Writer, l *log.Logger) Server {
 	return Server{
 		Reader:    r,
 		Writer:    w,
+		logger:    l,
 		Documents: map[string]string{},
 		Methods: map[string]MethodHandler{
 			"initialize": methods.Initialize,
 		},
-		Notifs: map[string]NotifHandler{},
+		Notifs: map[string]NotifHandler{
+			"initialized": methods.InitializedNotif,
+		},
 	}
 }
 
@@ -47,6 +50,7 @@ func (server *Server) write(obj Response) error {
 		return err
 	}
 	_, err = server.Writer.Write(objJson)
+	server.logger.Printf("Wrote: %s", objJson)
 	return err
 }
 
@@ -65,7 +69,7 @@ func (server *Server) read(req *Request) error {
 			return err
 		}
 		if newLineChar != byte('\n') {
-			return errors.New(`JsonRPC: \r should be followed by \n`)
+			return errors.New(`JsonRPC: "\r" should be followed by "\n"`)
 		}
 		if line == "\r" {
 			break
@@ -83,12 +87,12 @@ func (server *Server) read(req *Request) error {
 	}
 
 	if contentLen == 0 {
-		return errors.New("JsonRPC: No `Content-Length: ` header found")
+		return errors.New(`JsonRPC: No "Content-Length: " header found`)
 	}
 	return json.NewDecoder(io.LimitReader(reader, contentLen)).Decode(req)
 }
 
-func (server *Server) HandleMethod(req Request) {
+func (server *Server) handleMethod(req Request) {
 	handler, ok := server.Methods[req.Method]
 
 	if !ok {
@@ -112,4 +116,35 @@ func (server *Server) HandleMethod(req Request) {
 	if err != nil {
 		server.logger.Println("Error while responding: ", err.Error())
 	}
+}
+
+func (server *Server) handleNotif(req Request) {
+	handler, ok := server.Notifs[req.Method]
+	if !ok {
+		server.logger.Printf("Cannot handle notification: %s", req.Method)
+		return
+	}
+	err := handler(req.Params)
+	if err != nil {
+		server.logger.Printf("Error while handling %s: %s", req.Method, err.Error())
+	}
+}
+
+func (server *Server) HandleMsg() (shouldShutdown bool) {
+	var req Request
+	err := server.read(&req)
+	if err != nil {
+		server.logger.Printf("Error occurred while reading: %s", err.Error())
+		server.write(NewResErr(req.Id, ErrInvalidRequest))
+		return true
+	}
+
+	server.logger.Printf("Received request: %s", req.String())
+
+	if req.IsNotif() {
+		server.handleNotif(req)
+		return false
+	}
+	server.handleMethod(req)
+	return false
 }

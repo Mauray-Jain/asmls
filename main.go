@@ -1,7 +1,10 @@
 package main
 
 import (
+	"log"
 	"os"
+
+	"github.com/Mauray-Jain/asmls/lsp"
 )
 
 // Treesitter parser maybe?
@@ -15,4 +18,14 @@ func main() {
 	}
 	defer logOut.Close()
 
+	logger := log.New(logOut, "[asmls] ", log.Ldate | log.Ltime | log.Lshortfile)
+
+	server := lsp.NewServer(os.Stdin, os.Stdout, logger)
+
+	for {
+		shouldShutdown := server.HandleMsg()
+		if shouldShutdown {
+			break
+		}
+	}
 }

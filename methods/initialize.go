@@ -12,3 +12,7 @@ func Initialize(params *json.RawMessage) (any, error) {
 	}
 	return res, nil
 }
+
+func InitializedNotif(_ *json.RawMessage) (error) {
+	return nil
+}

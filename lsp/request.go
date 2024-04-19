@@ -1,6 +1,9 @@
 package lsp
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 type Request struct {
 	Jsonrpc string           `json:"jsonrpc"`
@@ -11,4 +14,8 @@ type Request struct {
 
 func (req Request) IsNotif() bool {
 	return req.Id == nil
+}
+
+func (req Request) String() string {
+	return fmt.Sprintf("Method: %s, Id: %v, Params: %v", req.Method, req.Id, string(*req.Params))
 }
